@@ -1,0 +1,177 @@
+---
+title: "Hypo_Portfolio"
+author: "Eric Hailer"
+date: "11/11/2020"
+output: html_document
+---
+
+### Load Packages
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(tidyquant)
+library(gganimate)
+library(quantmod)
+library(timetk)
+library(tibbletime)
+library(scales)
+library(highcharter)
+library(broom)
+library(PerformanceAnalytics)
+```
+
+### Data Import
+
+
+Pull stock returns from Yahoo Finance using the "tidyquant" packages.  The Quantmod package pulls stock retruns in an XTS format while tidyquant pulls the same stock data into a "tidy" format.  In some instances one is "better" than the other when ivolving different packages for visualizations, analysis, statistcs, however the data is ubiquitous.
+
+```{r}
+
+daily_prices <- c("AAPL", "GOOG", "NFLX") %>%
+    tq_get(get  = "stock.prices",
+           from = "1990-11-01",
+           to   = "2020-11-01")
+
+head(daily_prices)
+```
+
+The benefit of the Tidyquant package is the "tidy" output of the pulled Yahoo Finance daily price data. Tidy data is a standard way of mapping the meaning of a dataset to its structure. A dataset is messy or tidy depending on how rows, columns and tables are matched up with observations, variables and types. In tidy data:
+
+1) Each variable forms a column.
+
+2) Each observation forms a row.
+
+3) Each type of observational unit forms a table. 
+
+This allows simple and efficient analsysis on large datasets
+
+Lets show some simple data vizualiations of the pulled prices
+
+
+```{r}
+daily_prices %>%
+  filter(symbol == "AAPL") %>%
+  hchart(.,
+        type = "line",
+        hcaes(x = date,
+              y = adjusted)) %>%
+  hc_title(text = "AAPL Daily Price (Adjusted)")
+  
+
+```
+
+Since all we have right now are prices, let's add a column for monthly returns  
+
+```{r}
+
+monthly_returns <- c("AAPL", "GOOG", "NFLX", "SPY") %>%
+  tq_get(get = "stock.prices",
+         from = "2000-01-01",
+         to = "2020-11-01") %>%
+  group_by(symbol) %>%
+  tq_transmute(select = adjusted,
+               mutate_fun = periodReturn,
+               period = "monthly") %>%
+  mutate(
+    monthly_return = round(monthly.returns * 100, digits = 2))
+
+head(monthly_returns)
+
+```
+
+
+let's set up the same chart but as a bar chart and see if that's cleaner. Let's also change returns from monthly to yearly.
+
+
+```{r}
+
+yearly_returns <- c("AAPL", "GOOG", "NFLX", "SPY") %>%
+  tq_get(get = "stock.prices",
+         from = "2000-01-01",
+         to = "2020-11-01") %>%
+  group_by(symbol) %>%
+  tq_transmute(select = adjusted,
+               mutate_fun = periodReturn,
+               period = "yearly") %>%
+  mutate(
+    pct_return = round(yearly.returns * 100, digits = 2
+  )) #this line crates a column that converts the returns into a percentage and rounds 
+
+#Lets plot the yearly returns
+
+yearly_returns %>%
+    hchart(.,
+         type = "scatter",
+         hcaes(x = date,
+               y = pct_return,
+               group = symbol)) %>%
+  hc_yAxis(opposite = TRUE,
+           labels = list(format = "{value}%")) %>%
+  hc_tooltip(pointFormat = '{point.x:%Y-%m-%d}
+                            {point.y:4f}%')
+
+
+```
+
+Not the best visualization, but with replacing just one line of code we can easily tranform the above into a line chart for better viewing
+
+```{r}
+
+yearly_returns %>%
+    hchart(.,
+         type = "line",
+         hcaes(x = date,
+               y = pct_return,
+               group = symbol)) %>%
+  hc_yAxis(opposite = TRUE,
+           labels = list(format = "{value}%")) %>%
+  hc_tooltip(pointFormat = '{point.x:%Y-%m-%d}
+                            {point.y:4f}%')
+
+
+
+```
+
+
+Lets see how this looks when we animate it 
+
+```{r}
+yearly_returns %>%
+  ggplot(aes(x = date, y = pct_return, color = symbol)) +
+  geom_line(size = .75) +
+  geom_point() +
+  ggtitle("Yearly Returns",
+          subtitle = "2000-01-01 to 2020-11-01") +
+  ylab("Return") +
+  xlab("Date") +
+  transition_reveal(date)
+
+```
+Why tidy data? We can easily perform iterative analysis on our data set
+
+
+What was the best performing year of each stock over the last decade?
+
+```{r}
+
+yearly_returns %>%
+  group_by(symbol) %>%
+  arrange(desc(pct_return)) %>%
+  slice_head() %>%
+  select(symbol, date, pct_return)
+
+```
+
+Efficient statistical anylsis 
+
+
+```{r}
+
+yearly_returns %>%
+  select(symbol, date, pct_return) %>%
+  group_by(symbol) %>%
+  summarise(
+    mean = mean(pct_return),
+    sd = sd(pct_return),
+    median = median(pct_return))
+```
